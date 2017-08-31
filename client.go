@@ -87,6 +87,49 @@ type LoginRequest struct {
 }
 
 /*
+ * Format of Login response:
+ *
+ * <response id="G1000" origin="device" destination="gui" command="add" category="login"
+ * time="2015-03-09T17:38:09.783-06:00" protocol- version=“2.3” platform-name="neo" sw-
+ * version="me7k.2.3.0" sw-build="1">
+ * <session sid="949098745790" type="push" activity-timeout="300000" auth-method="local"
+ * farmer-id="Neo-180" client-ip="10.45.0.154" warning="Client time is ahead of controller
+ * time"/>
+ * </response>
+ */
+
+/* Note:
+2017/08/30 16:22:27 main - Response Body:
+ <?xml version="1.0" encoding="UTF-8"?><response id="beacham" origin="device" destination="transcoder-collector" command="add" category="login" time="2017-08-30T23:24:54.900Z" protocol-version="2.1" platform-name="neo" sw-version="me7k.2.1.2" sw-build="0" status="error"><reason error-code="Unknown_Error"><![CDATA[Number of sessions exceeded the maximum of 8.]]></reason></response>
+*/
+
+type LoginResponse struct {
+    XMLName xml.Name   `xml:"response"`
+    Id          string `xml:"id,attr"`
+    Origin      string `xml:"origin,attr"`
+    Destination string `xml:"destination,attr"`
+    Command     string `xml:"command,attr"`
+    Category    string `xml:"category,attr"`
+    Time        string `xml:"time,attr"`
+    Version     string `xml:"protocol-version,attr"`
+    Platform    string `xml:"platform-name,attr"`
+    SwVersion   string `xml:"sw-version,attr"`
+    SwBuild     string `xml:"sw-build,attr"`
+    Session     Session `xml:"session"`// struct
+}
+
+type Session struct {
+    XMLName         xml.Name `xml:"session"`
+    SessionId       string   `xml:"sid,attr"`
+    Type            string   `xml:"type,attr"`
+    ActivityTimeout string   `xml:"activity-timeout,attr"`
+    AuthMethod      string   `xml:"auth-method,attr"`
+    FarmerId        string   `xml:"farmer-id,attr"`
+    ClientIp        string   `xml:"client-ip,attr"`
+    Warning         string   `xml:"warning,attr"`
+}
+
+/*
  * Format of Subscription (bit rate) request:
  *
  * <request id="G1201" origin="gui" destination="device" command="add" category="subscription"
@@ -251,6 +294,8 @@ func main() {
 
     fmt.Printf ("main - enter...\n")
 
+    //var sid string // Session Id
+
     //var endPoint string = "http://localhost:8080/doSomething"
     //var endPoint string = "https://10.77.6.12" // real Me7k in San Diego
     //var endPoint string = "https://www.arris.com" // real Me7k (name is configured in /etc/host to map to 10.77.6.12)
@@ -269,12 +314,14 @@ func main() {
     v.Category = "login"
     v.Version = "2.1"
     v.Platform = "neo"
+    t := time.Now()
+    v.Time = t.String()
     u := &User{Name: "Admin", Password: "", Type: "push"}
     v.User = *u
 
 	output, err := xml.Marshal(v)
   	if err != nil {
-  		fmt.Printf("main - error: %v\n", err)
+  		fmt.Printf("main - Marshal error: %v\n", err)
   	}
 
     fmt.Printf("main - URL: %s \n", endPoint)
@@ -327,10 +374,36 @@ func main() {
         log.Println("main - Response Body:\n", string(body))
 
         // make sure you extract the sid now as you need it for subsequent messages
+
+        rsp := LoginResponse{}
+        xml.Unmarshal(body, &rsp)
+        log.Println("main - Unmarshal Login Response: ", rsp)
+        log.Println("main - Unmarshal Login Response body - Id: ", rsp.Id)
+        log.Println("main - Unmarshal Login Response body - Origin: ", rsp.Origin)
+        log.Println("main - Unmarshal Login Response body - Destination: ", rsp.Destination)
+        log.Println("main - Unmarshal Login Response body - Command: ", rsp.Command)
+        log.Println("main - Unmarshal Login Response body - Category: ", rsp.Category)
+        log.Println("main - Unmarshal Login Response body - Time: ", rsp.Time)
+        log.Println("main - Unmarshal Login Response body - Version: ", rsp.Version)
+        log.Println("main - Unmarshal Login Response body - Platform: ", rsp.Platform)
+        log.Println("main - Unmarshal Login Response body - SwVersion: ", rsp.SwVersion)
+        log.Println("main - Unmarshal Login Response body - SwBuild: ", rsp.SwBuild)
+        log.Println("main - Unmarshal Login Response session - SessionId: ", rsp.Session.SessionId)
+        log.Println("main - Unmarshal Login Response session - Type: ", rsp.Session.Type)
+        log.Println("main - Unmarshal Login Response session - ActivityTimeout: ", rsp.Session.ActivityTimeout)
+        log.Println("main - Unmarshal Login Response session - AuthMethod: ", rsp.Session.AuthMethod)
+        log.Println("main - Unmarshal Login Response session - FarmerId: ", rsp.Session.FarmerId)
+        log.Println("main - Unmarshal Login Response session - ClientIp: ", rsp.Session.ClientIp)
+        log.Println("main - Unmarshal Login Response session - Warning: ", rsp.Session.Warning)
+
+  	    /*if err != nil {
+  		    fmt.Printf("main - UnMarshal error: %v\n", err)
+  	     }*/
+
     }
 
     //
-    // Configure "keep alive" request data
+    // Configure "device subscription" request data
     //
 
     fmt.Printf ("main - ...exit\n")
