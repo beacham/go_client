@@ -129,6 +129,11 @@ type Session struct {
     Warning         string   `xml:"warning,attr"`
 }
 
+//
+// While most event subscriptions are for device-wide events, the subscription for bit rate events must
+// be directed to either a line, a mux, or a program level target.
+//
+
 /*
  * Format of Subscription (bit rate) request:
  *
@@ -144,7 +149,7 @@ type Session struct {
  * </path>
  * <event-list>
  * <event type="bit-rate-event" get-streams="true" get-std-dev="true" get-inst-br="true"
- * get-avg-br="true" get-video-info="true" get- audio-info="true"/>
+ * get-avg-br="true" get-video-info="true" get-audio-info="true"/>
  * </event-list>
  * </request>
  */
@@ -179,9 +184,9 @@ type Event struct {
         GetStreams string   `xml:"board id,attr`
         GetStdDev string    `xml:"gige-line id,attr"`
         GetInstBr string    `xml:"gige-output-mux id,attr"`
-        GetAvgBr string     `xml:"output-program id,attr"`
-        GetVideoInfo string `xml:"output-program id,attr"`
-        GetAudioInfo string `xml:"output-program id,attr"`
+        GetAvgBr string     `xml:"get-avg-br,attr"`
+        GetVideoInfo string `xml:"get-video-info,attr"`
+        GetAudioInfo string `xml:"get-audio-info,attr"`
 }
 
 /*
@@ -216,7 +221,7 @@ type DeviceRequest struct {
     Destination string `xml:"destination,attr"`
     Command     string `xml:"command,attr"`
     Category    string `xml:"category,attr"`
-    Time        string `xml:"time,attr"`     // how do i get a timestamp?
+    Time        string `xml:"time,attr"`
     Version     string `xml:"protocol-version,attr"`
     Platform    string `xml:"platform-name,attr"`
     SessionId   string `xml:"sid,attr"`
@@ -292,6 +297,8 @@ type KeepAlive struct {
 
 func main() {
 
+    var g_SessionId = ""
+
     fmt.Printf ("main - enter...\n")
 
     //var sid string // Session Id
@@ -321,7 +328,7 @@ func main() {
 
 	output, err := xml.Marshal(v)
   	if err != nil {
-  		fmt.Printf("main - Marshal error: %v\n", err)
+  		fmt.Printf("main - Marshal error on Login Request: %v\n", err)
   	}
 
     fmt.Printf("main - URL: %s \n", endPoint)
@@ -340,7 +347,7 @@ func main() {
     req, err := http.NewRequest("POST", endPoint, bytes.NewBuffer([]byte(output)))
     //req, err := http.NewRequest("POST", endPoint, bytes.NewBuffer([]byte("Post this data"))) // works
     if err != nil {
-        log.Fatalf("main - Error Occured. %+v\n", err)
+        log.Fatalf("main - Error Occured on httpNewRequest. %+v\n", err)
     }
     //req.Header.Set("Content-Type", "application/x-www-form-urlencoded") // old
     //req.Header.Add("Content-Type", "application/xml; charset=utf-8")
@@ -357,6 +364,7 @@ func main() {
     //
     // Use httpClient to actually send the request
     //
+
     response, err := httpClient.Do(req)
     if err != nil && response == nil {
         log.Fatalf("main - Error sending request to API endpoint. %+v\n", err)
@@ -396,8 +404,13 @@ func main() {
         log.Println("main - Unmarshal Login Response session - ClientIp: ", rsp.Session.ClientIp)
         log.Println("main - Unmarshal Login Response session - Warning: ", rsp.Session.Warning)
 
+        g_SessionId = rsp.Session.SessionId // save session id as global for use with events
+
+        //
+        // Does Unmarshal return an error?
+        //
   	    /*if err != nil {
-  		    fmt.Printf("main - UnMarshal error: %v\n", err)
+  		    fmt.Printf("main - Unmarshal error: %v\n", err)
   	     }*/
 
     }
@@ -406,6 +419,116 @@ func main() {
     // Configure "device subscription" request data
     //
 
-    fmt.Printf ("main - ...exit\n")
+    //
+    // Configure "bitrate subscription" request data
+    //
+
+    b := &BitRateRequest{Id: "beacham", Origin: "transcoder-collector"}
+    b.Destination = "device"
+  	b.Command = "add"
+    b.Category = "subscription"
+    b.Version = "2.1"
+    b.Platform = "neo"
+    ts := time.Now()
+    b.Time = ts.String()
+    b.SessionId = g_SessionId
+
+    //
+    // Subscribe to bit rate events at the MUX level
+    //
+
+    pMux := &Path{FarmerId: "ME-7000-2", BoardId: "4", GigeLineId: "4/3", GigeOutputMuxId: "0000"}
+    eMux := &Event{EventType: "bit-rate-event", GetStreams: "true", GetStdDev: "true", GetInstBr: "true", GetAvgBr: "false"}
+
+    //
+    // Subscribe to bit rate events at the PROGRAM level
+    //
+    //p := &Path{FarmerId: "ME-7000-2", BoardId: "4", GigeLineId: "4/3", GigeOutputMuxId: "0000", OutputProgramId: ""}
+    //e := &Event{EventType: "bit-rate-event", GetStreams: "true", GetStdDev: "true", GetInstBr: "true", GetAvgBr: "true", GetVideoInfo: "true", GetAudioInfo: "true"}
+
+    b.Path = *pMux
+    b.Event = *eMux
+
+	output, err = xml.Marshal(b)
+  	if err != nil {
+  		fmt.Printf("main - Marshal error on Subscription Event Request: %v\n", err)
+  	}
+
+    fmt.Printf("main - URL: %s \n", endPoint)
+    fmt.Println()
+    fmt.Printf("main - XML header: \n")
+    os.Stdout.Write([]byte(xml.Header))
+    fmt.Printf("\n")
+    fmt.Println("main - XML body for subscription event request:")
+  	os.Stdout.Write(output)
+    fmt.Println()
+
+    //
+    // Prepare the body of the "subscription event" request going to the server
+    //
+    //req, err := http.NewRequest("POST", endPoint, strings.NewReader(output)) // fails
+    req, err = http.NewRequest("POST", endPoint, bytes.NewBuffer([]byte(output)))
+    //req, err := http.NewRequest("POST", endPoint, bytes.NewBuffer([]byte("Post this data"))) // works
+    if err != nil {
+        log.Fatalf("main - Error Occured on httpNewRequest. %+v\n", err)
+    }
+    //req.Header.Set("Content-Type", "application/x-www-form-urlencoded") // old
+    //req.Header.Add("Content-Type", "application/xml; charset=utf-8")
+    req.Header.Add("Content-Type", "text/xml; charset=utf-8")
+
+    // Dump the prepared request going to the server
+    dump, err = httputil.DumpRequestOut(req, true)
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println("%q", dump)
+    fmt.Println()
+
+    //
+    // Use httpClient to actually send the request - should be a separate function
+    //
+
+    response, err = httpClient.Do(req)
+    if err != nil && response == nil {
+        log.Fatalf("main - Error sending request to API endpoint. %+v\n", err)
+    } else {
+        // Close the connection to reuse it
+        defer response.Body.Close()
+
+        // Let's check if the work actually is done
+        // We have seen inconsistencies even when we get 200 OK response
+        body, err := ioutil.ReadAll(response.Body)
+        if err != nil {
+            log.Fatalf("main - Couldn't parse response body. %+v", err)
+        }
+
+        log.Println("main - Response Body:\n", string(body))
+
+    }
+
+    //
+    // Now we need to listen for bit rate events sent to us by the "device"
+    //
+
+    fmt.Println("main - Subscription Event listen loop")
+
+    for {
+
+        if err != nil {
+            log.Fatalf("main - Couldn't parse response body. %+v", err)
+            break
+        }
+
+    }
+
+    //
+    // Clean up - Remove Subscription Event
+    //
+
+    //
+    // Clean up - Remove Login
+    //
+
+    fmt.Println ("main - ...exit")
 
 }
